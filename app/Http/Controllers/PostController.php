@@ -8,11 +8,19 @@ use willvincent\Rateable\Rating;
 
 class PostController extends Controller
 {
-
     public function index()
     {
-        $posts = Post::all();
-        return view('posts.index', compact('posts'));
+        $posts = Post::with('ratings')->latest()->get();
+
+        // Top Rated Posts
+        $topPosts = Post::with('ratings')
+            ->get()
+            ->sortByDesc(function ($post) {
+                return $post->averageRating;
+            })
+            ->take(3);
+
+        return view('posts.index', compact('posts', 'topPosts'));
     }
 
     public function create()
@@ -22,6 +30,11 @@ class PostController extends Controller
 
     public function store(Request $request)
     {
+        $request->validate([
+            'title' => 'required',
+            'content' => 'required'
+        ]);
+
         Post::create([
             'title' => $request->title,
             'content' => $request->content
@@ -32,15 +45,18 @@ class PostController extends Controller
 
     public function rate(Request $request, $id)
     {
-        $post = Post::find($id);
+        $request->validate([
+            'rating' => 'required|integer|min:1|max:5'
+        ]);
+
+        $post = Post::findOrFail($id);
 
         $rating = new Rating();
         $rating->rating = $request->rating;
-        $rating->user_id = 1;
+        $rating->user_id = rand(1, 9999);
 
         $post->ratings()->save($rating);
 
-        return back();
+        return back()->with('success', 'Rating Submitted Successfully!');
     }
-
 }
