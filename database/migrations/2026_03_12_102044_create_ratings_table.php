@@ -13,6 +13,8 @@ return new class extends Migration
             $table->morphs('rateable');
             $table->foreignId('user_id');
             $table->tinyInteger('rating');
+            $table->string('review_title')->nullable();
+            $table->text('review_text')->nullable();
             $table->timestamps();
 
             $table->index(['rateable_id', 'rateable_type']);

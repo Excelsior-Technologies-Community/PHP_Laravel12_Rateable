@@ -9,11 +9,33 @@ use Illuminate\Support\Facades\Auth;
 
 class PostController extends Controller
 {
-    // Display all posts with ratings
-    public function index()
+    // Display all posts with ratings + filter support
+    public function index(Request $request)
     {
-        $posts = Post::with('ratings')->latest()->paginate(5);
-        
+        $query = Post::with('ratings')->latest();
+
+        // Filter by star rating (e.g. ?star=5 or ?star=1)
+        if ($request->filled('star')) {
+            $star = (int) $request->star;
+            $query->whereHas('ratings', function ($q) use ($star) {
+                $q->where('rating', $star);
+            });
+        }
+
+        // Filter: top rated posts (sort by average rating)
+        if ($request->filled('sort') && $request->sort === 'top_rated') {
+            $posts = $query->get()->sortByDesc(fn($post) => $post->averageRating);
+            $posts = new \Illuminate\Pagination\LengthAwarePaginator(
+                $posts->forPage($request->get('page', 1), 5),
+                $posts->count(),
+                5,
+                $request->get('page', 1),
+                ['path' => $request->url(), 'query' => $request->query()]
+            );
+        } else {
+            $posts = $query->paginate(5)->appends($request->query());
+        }
+
         // Get top 3 rated posts
         $topPosts = Post::with('ratings')
             ->get()
@@ -54,45 +76,61 @@ class PostController extends Controller
         return redirect('/')->with('success', '✨ Post created successfully!');
     }
 
-    // Handle rating submission
+    // Handle rating submission (supports normal + AJAX request)
     public function rate(Request $request, $id)
     {
         $request->validate([
-            'rating' => 'required|integer|min:1|max:5'
+            'rating' => 'required|integer|min:1|max:5',
+            'review_title' => 'nullable|string|max:255',
+            'review_text' => 'nullable|string|max:2000',
         ], [
             'rating.required' => 'Please select a rating',
-            'rating.in' => 'Rating must be between 1 and 5 stars'
+            'rating.integer' => 'Rating must be between 1 and 5 stars',
         ]);
 
         $post = Post::findOrFail($id);
-        
+
         // Get user ID (using session or random for demo)
         $userId = session('user_id', rand(1, 10000));
         session(['user_id' => $userId]);
 
         // Check if user already rated
         $existingRating = $post->ratings()->where('user_id', $userId)->first();
-        
+
+        $data = [
+            'rating' => $request->rating,
+            'review_title' => $request->review_title,
+            'review_text' => $request->review_text,
+        ];
+
         if ($existingRating) {
             // Update existing rating
-            $existingRating->update(['rating' => $request->rating]);
+            $existingRating->update($data);
             $message = '🔄 Rating updated successfully!';
         } else {
             // Create new rating
-            $post->ratings()->create([
-                'user_id' => $userId,
-                'rating' => $request->rating
-            ]);
+            $post->ratings()->create(array_merge($data, ['user_id' => $userId]));
             $message = '⭐ Rating submitted successfully!';
+        }
+
+        // AJAX request -> return JSON, no page refresh
+        if ($request->ajax() || $request->wantsJson()) {
+            $post->refresh();
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'average_rating' => $post->averageRating,
+                'total_ratings' => $post->ratings->count(),
+            ]);
         }
 
         return back()->with('success', $message);
     }
 
-    // Show single post
+    // Show single post (with all reviews)
     public function show($id)
     {
-        $post = Post::with('ratings')->findOrFail($id);
+        $post = Post::with('ratings.user')->findOrFail($id);
         return view('posts.show', compact('post'));
     }
 
@@ -102,7 +140,7 @@ class PostController extends Controller
         $post = Post::findOrFail($id);
         $post->ratings()->delete();
         $post->delete();
-        
+
         return redirect('/')->with('success', '🗑️ Post deleted successfully!');
     }
 }
