@@ -28,6 +28,22 @@
                 </div>
             </div>
         </div>
+
+        <!-- Reviews list -->
+        @if($post->ratings->where('review_text', '!=', null)->count())
+        <div style="margin-top: 30px; border-top: 1px solid #e0e0e0; padding-top: 20px;">
+            <h3 style="margin-bottom: 15px; color: #333;">Reviews</h3>
+            @foreach($post->ratings->where('review_text', '!=', null) as $review)
+                <div style="background: white; border-radius: 10px; padding: 15px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>{{ $review->review_title ?? 'Anonymous review' }}</strong>
+                        <span style="color: #f39c12;">{{ str_repeat('★', $review->rating) }}{{ str_repeat('☆', 5 - $review->rating) }}</span>
+                    </div>
+                    <p style="color: #666; margin: 6px 0 0;">{{ $review->review_text }}</p>
+                </div>
+            @endforeach
+        </div>
+        @endif
     </div>
 </div>
 @endsection
